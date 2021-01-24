@@ -2,6 +2,12 @@ import torch
 import torchvision.datasets as dsets
 from torchvision import transforms
 
+def AddComplexZeros(x):
+  """ Add complex channel to images filled with zeros to make things compatible with fft2/ifft2"""
+  x = x.repeat(2, 1, 1)
+  x[1] = 0
+  return x
+
 
 class Data_Loader():
     def __init__(self, train, dataset, image_path, image_size, batch_size, shuf=True):
@@ -33,6 +39,14 @@ class Data_Loader():
     def load_celeb(self):
         transforms = self.transform(True, True, True, True)
         dataset = dsets.ImageFolder(self.path+'/CelebA', transform=transforms)
+        return dataset
+
+    def load_cifar100bw(self):
+        transform = transforms.Compose([transforms.Grayscale(),
+                                   transforms.RandomHorizontalFlip(), transforms.RandomVerticalFlip(), transforms.ToTensor(), AddComplexZeros])
+        dataset = datasets.CIFAR100(self.path+'/Cifar100bw', train=True, transform=transform, target_transform=None,
+                                          download=True)
+
         return dataset
 
 
