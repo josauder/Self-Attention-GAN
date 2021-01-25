@@ -43,7 +43,7 @@ class Data_Loader():
 
     def load_cifar100bw(self):
         transform = transforms.Compose([transforms.Grayscale(),
-                                   transforms.RandomHorizontalFlip(), transforms.RandomVerticalFlip(), transforms.ToTensor(), AddComplexZeros])
+                                   transforms.RandomHorizontalFlip(), transforms.RandomVerticalFlip(), transforms.ToTensor()])
         dataset = dsets.CIFAR100(self.path+'/Cifar100bw', train=True, transform=transform, target_transform=None,
                                           download=True)
 

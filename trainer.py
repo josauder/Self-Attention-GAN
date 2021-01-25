@@ -77,6 +77,7 @@ class Trainer(object):
 
         # Fixed input for debugging
         fixed_z = tensor2var(torch.randn(self.batch_size, self.z_dim))
+        print(fixed_z)
 
         # Start with trained model
         if self.pretrained_model:
@@ -173,8 +174,8 @@ class Trainer(object):
                 print("Elapsed [{}], G_step [{}/{}], D_step[{}/{}], d_out_real: {:.4f}, "
                       " ave_gamma_l3: {:.4f}, ave_gamma_l4: {:.4f}".
                       format(elapsed, step + 1, self.total_step, (step + 1),
-                             self.total_step , d_loss_real.data[0],
-                             self.G.attn1.gamma.mean().data[0], self.G.attn2.gamma.mean().data[0] ))
+                             self.total_step , d_loss_real.item(),
+                             self.G.attn1.gamma.mean().item(), self.G.attn2.gamma.mean().item() ))
 
             # Sample images
             if (step + 1) % self.sample_step == 0:

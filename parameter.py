@@ -34,6 +34,7 @@ def get_parameters():
 
     # Misc
     parser.add_argument('--train', type=str2bool, default=True)
+    parser.add_argument('--inverse', type=str2bool, default=False)
     parser.add_argument('--parallel', type=str2bool, default=False)
     parser.add_argument('--dataset', type=str, default='cifar', choices=['lsun', 'celeb', 'cifar100bw'])
     parser.add_argument('--use_tensorboard', type=str2bool, default=False)

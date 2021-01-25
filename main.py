@@ -31,6 +31,7 @@ def main(config):
     else:
         tester = Tester(data_loader.loader(), config)
         tester.test()
+        
 
 if __name__ == '__main__':
     config = get_parameters()
