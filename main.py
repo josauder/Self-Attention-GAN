@@ -5,6 +5,8 @@ from trainer import Trainer
 from data_loader import Data_Loader
 from torch.backends import cudnn
 from utils import make_folder
+import numpy as np
+import torch
 
 def main(config):
     # For fast training
@@ -28,9 +30,13 @@ def main(config):
         elif config.model == 'qgan':
             trainer = qgan_trainer(data_loader.loader(), config)
         trainer.train()
-    else:
-        tester = Tester(data_loader.loader(), config)
-        tester.test()
+    elif config.inverse:
+        np.random.seed(0)
+        torch.manual_seed(0)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        inverse = Inverse(data_loader.loader(), config)
+        inverse.inverse()
         
 
 if __name__ == '__main__':

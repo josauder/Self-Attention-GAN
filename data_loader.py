@@ -49,6 +49,13 @@ class Data_Loader():
 
         return dataset
 
+    def load_cifar100bw_test(self):
+        transform = transforms.Compose([transforms.Grayscale(),
+                                   transforms.ToTensor()])
+        dataset = dsets.CIFAR100(self.path+'/Cifar100bw_test', train=False, transform=transform, target_transform=None,
+                                          download=True)
+
+        return dataset
 
     def loader(self):
         if self.dataset == 'lsun':
@@ -57,6 +64,8 @@ class Data_Loader():
             dataset = self.load_celeb()
         elif self.dataset == 'cifar100bw':
             dataset = self.load_cifar100bw()
+        elif self.dataset == 'cifar100bw_test':
+            dataset = self.load_cifar100bw_test()
 
         loader = torch.utils.data.DataLoader(dataset=dataset,
                                               batch_size=self.batch,
