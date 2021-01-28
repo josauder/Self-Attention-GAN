@@ -80,16 +80,32 @@ class Generator(nn.Module):
             layer4.append(nn.ReLU())
             self.l4 = nn.Sequential(*layer4)
 
+        if self.imsize == 64:
+            layer4 = []
+            curr_dim = int(curr_dim / 2)
+            layer4.append(SpectralNorm(nn.ConvTranspose2d(curr_dim, int(curr_dim / 2), 4, 2, 1)))
+            layer4.append(nn.BatchNorm2d(int(curr_dim / 2)))
+            layer4.append(nn.ReLU())
+            self.l4 = nn.Sequential(*layer4)
+            curr_dim = int(curr_dim / 2)
+
         self.l1 = nn.Sequential(*layer1)
         self.l2 = nn.Sequential(*layer2)
         self.l3 = nn.Sequential(*layer3)
 
-        last.append(nn.ConvTranspose2d(curr_dim, 1, 1, 1, 0))
+        if self.imsize == 32:
+            last.append(nn.ConvTranspose2d(curr_dim, 1, 1, 1, 0))
+        elif self.imsize == 64:
+            last.append(nn.ConvTranspose2d(curr_dim, 1, 4, 2, 1))
         last.append(nn.Tanh())
         self.last = nn.Sequential(*last)
 
-        self.attn1 = Self_Attn(64, 'relu')
-        self.attn2 = Self_Attn(64, 'relu')
+        if self.imsize == 32:
+            self.attn1 = Self_Attn(64, 'relu')
+            self.attn2 = Self_Attn(64, 'relu')
+        if self.imsize == 64:
+            self.attn1 = Self_Attn(128, 'relu')
+            self.attn2 = Self_Attn(64, 'relu')
 
     def forward(self, z):
         z = z.view(z.size(0), z.size(1), 1, 1)
@@ -136,6 +152,14 @@ class Discriminator(nn.Module):
             layer4.append(nn.LeakyReLU(0.1))
             self.l4 = nn.Sequential(*layer4)
             curr_dim = curr_dim * 2
+
+        if self.imsize == 64:
+            layer4 = []
+            layer4.append(SpectralNorm(nn.Conv2d(curr_dim, curr_dim * 2, 4, 2, 1)))
+            layer4.append(nn.LeakyReLU(0.1))
+            self.l4 = nn.Sequential(*layer4)
+            curr_dim = curr_dim * 2
+
         self.l1 = nn.Sequential(*layer1)
         self.l2 = nn.Sequential(*layer2)
         self.l3 = nn.Sequential(*layer3)
@@ -155,4 +179,3 @@ class Discriminator(nn.Module):
         out, p2 = self.attn2(out)
         out = self.last(out)
         return out.squeeze(), p1, p2
-    
