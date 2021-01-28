@@ -57,6 +57,19 @@ class Data_Loader():
 
         return dataset
 
+    def load_mri_train(self):
+
+        train_transform = transforms.Compose([transforms.Grayscale(), transforms.RandomAffine((0, 0), translate=(0, 0.1), scale=(0.8, 1.2)),
+                                   transforms.RandomResizedCrop((128, 128), scale=(1.0, 1.0)), transforms.RandomHorizontalFlip(),
+                                   transforms.RandomVerticalFlip(), transforms.ToTensor()])
+        train_dataset = dsets.ImageFolder('../na-alista/realdata/train', transform=train_transform)
+        return train_dataset
+
+    def load_mri_test(self):
+        test_transform = transforms.Compose([transforms.Resize(128), transforms.CenterCrop(128), transforms.Grayscale(), transforms.ToTensor()])
+        test_dataset = dsets.ImageFolder('../na-alista/realdata/test', transform=test_transform)
+        return test_dataset
+
     def loader(self):
         if self.dataset == 'lsun':
             dataset = self.load_lsun()
@@ -66,6 +79,10 @@ class Data_Loader():
             dataset = self.load_cifar100bw()
         elif self.dataset == 'cifar100bw_test':
             dataset = self.load_cifar100bw_test()
+        elif self.dataset == 'mri':
+            dataset = self.load_mri_train()
+        elif self.dataset == 'mri_test':
+            dataset = self.load_mri_test()
 
         loader = torch.utils.data.DataLoader(dataset=dataset,
                                               batch_size=self.batch,

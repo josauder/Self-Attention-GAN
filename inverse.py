@@ -1,9 +1,8 @@
-
 import os
 import time
 import torch
 import datetime
-
+import numpy as np
 import torch.nn as nn
 from torch.autograd import Variable
 from torchvision.utils import save_image
@@ -86,6 +85,7 @@ def cto1(x):
     """
     return x.transpose(-3, -1).transpose(-1, -2)
 
+
 def ctoend(x):
     """
     Args:
@@ -94,6 +94,7 @@ def ctoend(x):
         :return tensor with three last dimensions H x W x (1 or 2)
     """
     return x.transpose(-3, -1).transpose(-3, -2)
+
 
 def fftshift(x, dim=None):
     """
@@ -130,10 +131,10 @@ def ifftshift(x, dim=None):
 
 
 def AddComplexZeros(x):
-  """ Add complex channel to images filled with zeros to make things compatible with fft2/ifft2"""
-  x = x.repeat(2, 1, 1)
-  x[1] = 0
-  return x
+    """ Add complex channel to images filled with zeros to make things compatible with fft2/ifft2"""
+    x = x.repeat(1, 2, 1, 1)
+    x[:, 1] = 0
+    return x
 
 
 def sample(image, samples_x, samples_y):
@@ -148,13 +149,12 @@ def sample(image, samples_x, samples_y):
     samples_y = samples_y.unsqueeze(2)
     samples_y = samples_y.unsqueeze(3)
     samples = torch.cat([samples_x, samples_y], 3)
-    #samples[:, :, :, 0] = (samples[:, :, :, 0] / (W - 1))  # normalize to between  0 and 1
-    #samples[:, :, :, 1] = (samples[:, :, :, 1] / (H - 1))  # normalize to between  0 and 1
-    #samples = samples * 2 - 1  # normalize to between -1 and 1
+    # samples[:, :, :, 0] = (samples[:, :, :, 0] / (W - 1))  # normalize to between  0 and 1
+    # samples[:, :, :, 1] = (samples[:, :, :, 1] / (H - 1))  # normalize to between  0 and 1
+    # samples = samples * 2 - 1  # normalize to between -1 and 1
 
-    print(image.shape, samples.shape)
-    print(samples.min(), samples.max())
     return torch.nn.functional.grid_sample(image, samples, align_corners=False)
+
 
 class RadialSpoke(object):
     def __init__(self, degree):
@@ -162,19 +162,23 @@ class RadialSpoke(object):
 
     def get_locations(self, locations_per_shot):
         loc_2d = torch.zeros((2, locations_per_shot))
-        loc_2d += torch.linspace(-np.pi, np.pi, locations_per_shot)
+        loc_2d += torch.linspace(-1, 1, locations_per_shot)
         loc_2d[0] *= np.sin(self.degree / 180 * np.pi)
         loc_2d[1] *= np.cos(self.degree / 180 * np.pi)
         return loc_2d
 
-trajectory_set = lambda locations_per_shot: torch.stack([RadialSpoke(p).get_locations(locations_per_shot) for p in np.arange(0, 360, 1)])
+
+trajectory_set = lambda locations_per_shot: torch.stack(
+    [RadialSpoke(p).get_locations(locations_per_shot) for p in np.arange(0, 360, 1)])
+
 
 def get_random_ktraj(n_shots=30, locations_per_shot=200):
     M = n_shots
     L = locations_per_shot
     ktraj_all = trajectory_set(L)
-    r = torch.randint(len(ktraj_all), size=(1*M,))
-    return ktraj_all[r].reshape(1, M, 2, L).transpose(1, 2).reshape(1, 2, M*L)
+    r = torch.randint(len(ktraj_all), size=(1 * M,))
+    return ktraj_all[r].reshape(1, M, 2, L).transpose(1, 2).reshape(1, 2, M * L)
+
 
 class Inverse(object):
     def __init__(self, data_loader, config):
@@ -231,8 +235,6 @@ class Inverse(object):
         if self.pretrained_model:
             self.load_pretrained_model()
 
-
-
     def inverse(self):
 
         # Data iterator
@@ -242,7 +244,6 @@ class Inverse(object):
 
         # Fixed input for debugging
         fixed_z = tensor2var(torch.randn(self.batch_size, self.z_dim))
-        print(fixed_z)
 
         # Start with trained model
         if self.pretrained_model:
@@ -254,7 +255,7 @@ class Inverse(object):
         start_time = time.time()
 
         self.G.eval()
-
+        print(self.total_step)
         for step in range(start, self.total_step):
 
             # ================== Train D ================== #
@@ -268,30 +269,50 @@ class Inverse(object):
             # Compute loss with real images
             # dr1, dr2, df1, df2, gf1, gf2 are attention scores
             real_images = tensor2var(real_images)
-            d_out_real,dr1,dr2 = self.D(real_images)
+            d_out_real, dr1, dr2 = self.D(real_images)
             if self.adv_loss == 'wgan-gp':
                 d_loss_real = - torch.mean(d_out_real)
             elif self.adv_loss == 'hinge':
                 d_loss_real = torch.nn.ReLU()(1.0 - d_out_real).mean()
 
+            z_dim = self.z_dim
 
             # Create random noise
-            z = tensor2var(torch.randn(real_images.size(0), self.z_dim))
-            optimizer = torch.optim.Adam([z])
-            ktraj = get_random_ktraj()
+            class Z(nn.Module):
+                def __init__(self):
+                    super(Z, self).__init__()
+
+                    self.z = nn.Parameter(tensor2var(torch.randn(real_images.size(0), z_dim)))
+
+                def forward(self):
+                    return self.z
+
+            z = Z()
+            optimizer = torch.optim.Adam(z.parameters(), lr=0.1)
+            # optimizer = torch.optim.SGD(z.parameters(), lr=0.1, momentum=0.9)
+            ktraj = get_random_ktraj().cuda()
+            print(real_images.shape, ktraj.shape)
+            ktraj = ktraj.repeat(real_images.shape[0], 1, 1)
             print(ktraj.shape)
-            F = lambda x: sample(fft2(AddComplexZeros(x)), ktraj[:,0], ktraj[:,1])
+            F = lambda x: sample(fft2(AddComplexZeros(x)), ktraj[:, 0], ktraj[:, 1])
             y = F(real_images)
 
-            for i in range(50):
-                fake_images,_,_ = self.G(z)
-                loss = ((y - F(fake_images))**2).mean()
+            import matplotlib.pyplot as plt
+            plt.imsave('real.png', real_images[0, 0].detach().cpu().numpy())
+            plt.show()
+
+            for i in range(5000):
+                fake_images, _, _ = self.G(z())
+                loss = ((y - F(fake_images)) ** 2).mean()
 
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                print(loss.item())
-
+                if i % 50 == 0:
+                    plt.imsave('inverse' + str(i) + '.png', fake_images[0, 0].detach().cpu().numpy())
+                    plt.show()
+                    print(i, loss.item())
+            break
             # Print out log info
             if (step + 1) % self.log_step == 0:
                 elapsed = time.time() - start_time
@@ -299,16 +320,16 @@ class Inverse(object):
                 print("Elapsed [{}], G_step [{}/{}], D_step[{}/{}], d_out_real: {:.4f}, "
                       " ave_gamma_l3: {:.4f}, ave_gamma_l4: {:.4f}".
                       format(elapsed, step + 1, self.total_step, (step + 1),
-                             self.total_step , d_loss_real.item(),
-                             self.G.attn1.gamma.mean().item(), self.G.attn2.gamma.mean().item() ))
+                             self.total_step, d_loss_real.item(),
+                             self.G.attn1.gamma.mean().item(), self.G.attn2.gamma.mean().item()))
 
             # Sample images
             if (step + 1) % self.sample_step == 0:
-                fake_images,_,_= self.G(fixed_z)
+                fake_images, _, _ = self.G(fixed_z)
                 save_image(denorm(fake_images.data),
                            os.path.join(self.sample_path, '{}_fake.png'.format(step + 1)))
 
-            if (step+1) % model_save_step==0:
+            if (step + 1) % model_save_step == 0:
                 torch.save(self.G.state_dict(),
                            os.path.join(self.model_save_path, '{}_G.pth'.format(step + 1)))
                 torch.save(self.D.state_dict(),
@@ -316,21 +337,23 @@ class Inverse(object):
 
     def build_model(self):
 
-        self.G = Generator(self.batch_size,self.imsize, self.z_dim, self.g_conv_dim).cuda()
-        self.D = Discriminator(self.batch_size,self.imsize, self.d_conv_dim).cuda()
+        self.G = Generator(self.batch_size, self.imsize, self.z_dim, self.g_conv_dim).cuda()
+        self.D = Discriminator(self.batch_size, self.imsize, self.d_conv_dim).cuda()
         if self.parallel:
             self.G = nn.DataParallel(self.G)
             self.D = nn.DataParallel(self.D)
 
         # Loss and optimizer
         # self.g_optimizer = torch.optim.Adam(self.G.parameters(), self.g_lr, [self.beta1, self.beta2])
-        self.g_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.G.parameters()), self.g_lr, [self.beta1, self.beta2])
-        self.d_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.D.parameters()), self.d_lr, [self.beta1, self.beta2])
+        self.g_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.G.parameters()), self.g_lr,
+                                            [self.beta1, self.beta2])
+        self.d_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.D.parameters()), self.d_lr,
+                                            [self.beta1, self.beta2])
 
         self.c_loss = torch.nn.CrossEntropyLoss()
         # print networks
-        print(self.G)
-        print(self.D)
+        # print(self.G)
+        # print(self.D)
 
     def build_tensorboard(self):
         from logger import Logger
