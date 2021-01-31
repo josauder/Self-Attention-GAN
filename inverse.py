@@ -243,7 +243,7 @@ class Inverse(object):
         model_save_step = int(self.model_save_step * step_per_epoch)
 
         # Fixed input for debugging
-        fixed_z = tensor2var(torch.randn(self.batch_size, self.z_dim))
+        fixed_z = tensor2var(torch.randn(1, self.z_dim).repeat(self.batch_size, 1))
 
         # Start with trained model
         if self.pretrained_model:
@@ -276,42 +276,70 @@ class Inverse(object):
                 d_loss_real = torch.nn.ReLU()(1.0 - d_out_real).mean()
 
             z_dim = self.z_dim
+            bs = self.batch_size
 
             # Create random noise
             class Z(nn.Module):
                 def __init__(self):
                     super(Z, self).__init__()
 
-                    self.z = nn.Parameter(tensor2var(torch.randn(real_images.size(0), z_dim)))
+                    self.z = nn.Parameter(tensor2var(torch.randn(1, z_dim).repeat(bs, 1)))
 
                 def forward(self):
                     return self.z
 
             z = Z()
-            optimizer = torch.optim.Adam(z.parameters(), lr=0.1)
-            # optimizer = torch.optim.SGD(z.parameters(), lr=0.1, momentum=0.9)
+
+            #optimizer = torch.optim.SGD(z.parameters(), lr=0.1, momentum=0.9)
             ktraj = get_random_ktraj().cuda()
-            print(real_images.shape, ktraj.shape)
             ktraj = ktraj.repeat(real_images.shape[0], 1, 1)
-            print(ktraj.shape)
-            F = lambda x: sample(fft2(AddComplexZeros(x)), ktraj[:, 0], ktraj[:, 1])
+            F = lambda x: sample(fft2(AddComplexZeros((x + 0.5) / 2)), ktraj[:, 0], ktraj[:, 1])
             y = F(real_images)
 
             import matplotlib.pyplot as plt
-            plt.imsave('real.png', real_images[0, 0].detach().cpu().numpy())
+            plt.imsave('real.png', real_images[4, 0].detach().cpu().numpy(), cmap='gray')
+            plt.imsave('real1.png', real_images[5, 0].detach().cpu().numpy(), cmap='gray')
             plt.show()
 
-            for i in range(5000):
-                fake_images, _, _ = self.G(z())
-                loss = ((y - F(fake_images)) ** 2).mean()
+            GD = False
+            if GD:
+                optimizer = torch.optim.Adam(z.parameters(), lr=0.05)
+                for i in range(3000):
+                    fake_images, _, _ = self.G(z())
+                    loss = (((y - F(fake_images))**2)).mean()
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                if i % 50 == 0:
-                    plt.imsave('inverse' + str(i) + '.png', fake_images[0, 0].detach().cpu().numpy())
-                    plt.show()
-                    print(i, loss.item())
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    if i % 100 == 0 or (i < 100 and i %10 == 0):
+                        plt.imsave('inverse' + str(i) + '_.png', fake_images[4, 0].detach().cpu().numpy(), cmap='gray')
+                        plt.imsave('inverse' + str(i) + '_1.png', fake_images[5, 0].detach().cpu().numpy(), cmap='gray')
+                        plt.show()
+                        print(i, loss.item())
+            else:
+                w_opt = torch.optim.SGD(lr=10e-4)
+                z_opt = torch.optim.SGD(lr=10e-4)
+                sigma = 10e-3
+                rho = 1
+                fake_images, _, _ = self.G(z())
+                w_Gz = w - fake_images
+                lmbda = torch.ones(fake_images.shape) * 0.1
+
+                for i in range(0, 3000):
+                    Lw = (((y - w)**2)).mean()
+                    lagrangian = Lw + (lmbda * w_Gz.flatten()).mean() + rho/2 * ((w_Gz)**2).mean()
+                    w_opt.zero_grad()
+                    lagrangian.backward()
+                    w_opt.step()
+                    w_opt.zero_grad()
+                    lagrangian.backward()
+                    w_opt.step()
+                    fake_images, _, _ = self.G(z())
+                    w_Gz = w - fake_images
+
+                    sigma = torch.mininum(sigma, sigma / torch.sqrt(((w_Gz)**2).mean())*(i+1)*torch.log(torch.log(i+1)))
+                    lmbda = lmbda + sigma * w_Gz
+                    print(Lw)
             break
             # Print out log info
             if (step + 1) % self.log_step == 0:

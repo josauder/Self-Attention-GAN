@@ -1,12 +1,14 @@
 import torch
 import torchvision.datasets as dsets
 from torchvision import transforms
+import numpy as np
 
 def AddComplexZeros(x):
   """ Add complex channel to images filled with zeros to make things compatible with fft2/ifft2"""
   x = x.repeat(2, 1, 1)
   x[1] = 0
   return x
+
 
 
 class Data_Loader():
@@ -58,15 +60,20 @@ class Data_Loader():
         return dataset
 
     def load_mri_train(self):
-
-        train_transform = transforms.Compose([transforms.Grayscale(), transforms.RandomAffine((0, 0), translate=(0, 0.1), scale=(0.8, 1.2)),
+        jit = lambda x: (x * (1 + (np.random.normal() / 20)) + np.random.normal()/20).clamp(-1, 1)
+        train_transform = transforms.Compose([transforms.Grayscale(), transforms.RandomAffine((0, 0), translate=(0, 0.2), scale=(0.7, 1.3)),
                                    transforms.RandomResizedCrop((64, 64), scale=(1.0, 1.0)), transforms.RandomHorizontalFlip(),
-                                   transforms.RandomVerticalFlip(), transforms.ToTensor()])
+                                   transforms.RandomVerticalFlip(), transforms.ToTensor(), transforms.Normalize((0.5), (0.5)), jit])
         train_dataset = dsets.ImageFolder('na-alista/realdata/train', transform=train_transform)
         return train_dataset
 
     def load_mri_test(self):
-        test_transform = transforms.Compose([transforms.Resize(64), transforms.CenterCrop(64), transforms.Grayscale(), transforms.ToTensor()])
+        test_transform = transforms.Compose([transforms.Resize(64), transforms.CenterCrop(64), transforms.Grayscale(), transforms.ToTensor(), transforms.Normalize((0.5), (0.5))])
+        test_dataset = dsets.ImageFolder('na-alista/realdata/train', transform=test_transform)
+        return test_dataset
+
+    def load_mri_test_32(self):
+        test_transform = transforms.Compose([transforms.Resize(32), transforms.CenterCrop(32), transforms.Grayscale(), transforms.ToTensor()])
         test_dataset = dsets.ImageFolder('na-alista/realdata/test', transform=test_transform)
         return test_dataset
 
@@ -83,11 +90,13 @@ class Data_Loader():
             dataset = self.load_mri_train()
         elif self.dataset == 'mri_test':
             dataset = self.load_mri_test()
+        elif self.dataset == 'mri_test_32':
+            dataset = self.load_mri_test_32()
 
         loader = torch.utils.data.DataLoader(dataset=dataset,
                                               batch_size=self.batch,
                                               shuffle=self.shuf,
-                                              num_workers=2,
+                                              num_workers=0,
                                               drop_last=True)
         return loader
 
